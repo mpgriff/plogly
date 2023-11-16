@@ -455,7 +455,6 @@ class Borehole:
             axs[n_extra+5].yaxis.set_label_position("right")
             axs[n_extra+5].yaxis.tick_right()
             axs[n_extra+5].yaxis.set_label('depth [m]')
-            plt.tight_layout()
             return axs
 
         self.plot = plot

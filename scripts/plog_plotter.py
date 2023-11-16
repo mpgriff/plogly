@@ -15,14 +15,17 @@ try:
     from dill import load
     with open(fname, 'rb') as f:
         obj = load(f)
-    obj.plot()
+    ax = obj.plot()
+    fig = ax.flatten()[0].get_figure()
+    fig.suptitle(fname)
+    plt.tight_layout()
     plt.show()
 
 
 except Exception as e:
     import traceback
     import sys,os
-    error_log = os.path.split(fname)[0] + f'\\plot_{ext}.err'
+    error_log = fname+'.plotting.err'
     print(str(e))
     print(traceback.format_exc())
     with open(error_log, 'w') as f:
