@@ -417,8 +417,8 @@ class Borehole:
                 )) >= 6, "not enough subplots provided for a dart logging data display"
                 fig = axs.flatten()[0].figure
 
-            # for i in range(n_extra):
-            #     self.logs[i].plot(ax=axs[i])
+            for i in range(n_extra):
+                self.logs[i].plot(ax=axs[i])
             self.plot_wc(ax=axs[n_extra])
             
             self['SE decay'].plot(ax=axs[n_extra+1])
