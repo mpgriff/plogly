@@ -354,129 +354,6 @@ class Borehole:
         return deepcopy(self)
 
     @classmethod
-    def dart(cls, export_folder):
-        logs = []
-
-        bh_name = os.path.split(export_folder)[-1]
-        # bh_name = ''
-        raw = np.genfromtxt(export_folder+'_1Dvectors.txt', names=True)
-        for name in raw.dtype.names:
-            if name not in ['depth', 'unix_time', 'board_temp', 'magnet_temp']:
-                tmp_log = Log(raw[name], raw['depth']-0.22 *
-                              0.5, raw['depth']+0.22*0.5, name)
-                logs.append(tmp_log)
-
-        SE_decay = np.genfromtxt(export_folder+'_SE_decay.txt')
-        SE_time = np.genfromtxt(export_folder+'_SE_decay_time.txt')
-        # bit of a hack
-        logs.append(Log.two_dim(logs[-1].z, SE_time,
-                    SE_decay[:, :-1], 'SE decay'))
-
-        T2_dist = np.genfromtxt(export_folder+'_T2_dist.txt')
-        T2_dist_bins = 10**np.genfromtxt(export_folder+'_T2_bins_log10s.txt')
-        # bit of a hack
-        logs.append(Log.two_dim(
-            logs[-1].z, T2_dist_bins, T2_dist[:, 1:], 'T2 dist'))
-
-        self = cls(logs)
-        self.name = bh_name
-        self.export_folder = export_folder
-
-        def plot_wc(ax=None, legend=False):
-            if ax is None:
-                fig, ax = plt.subplots()
-            else:
-                fig = ax.figure
-            base = np.zeros_like(self['freef'].values)
-            ax.plot(self['totalf'].values,
-                    self['totalf'].z,  'k-', label='total',)
-            ax.fill_betweenx(
-                self['totalf'].z, base, self['freef'].values, label='free', facecolor='b')
-            base += self['freef'].values
-            ax.fill_betweenx(self['totalf'].z, base, base +
-                             self['capf'].values, label='cap.', facecolor='cyan')
-            base += self['capf'].values
-            ax.fill_betweenx(self['totalf'].z, base, base +
-                             self['clayf'].values, label='clay', facecolor='bisque')
-            if legend:
-                ax.legend(fontsize='x-small')
-            ax.set_xlim(0, 1)
-            ax.set_xlabel('Water Content [%]')
-            return ax
-        self.plot_wc = plot_wc
-
-        def plot(axs=None):
-            n_extra = len(self.logs)-15
-            if axs is None:
-
-                width_ratios = [1]*n_extra + [1, 2, 3, 1, 1, 1]
-                fig, axs = plt.subplots(
-                    1, n_extra+6, sharey=True, width_ratios=width_ratios, figsize=(8,4))
-            else:
-                assert len(axs.flatten(
-                )) >= 6, "not enough subplots provided for a dart logging data display"
-                fig = axs.flatten()[0].figure
-
-            for i in range(n_extra):
-                self.logs[i].plot(ax=axs[i])
-            self.plot_wc(ax=axs[n_extra])
-            
-            self['SE decay'].plot(ax=axs[n_extra+1])
-            axs[n_extra+1].set_xlabel('SE decay [s]')
-            
-            self['T2 dist'].plot(ax=axs[n_extra+2], cmap='Greens');
-            self['mlT2'].plot(ax=axs[n_extra+2], color='r')
-            axs[n_extra+2].set_xlabel('T2 dist [s]')
-            axs[n_extra+2].set_xscale('log')
-
-            tmp_logs = self.names
-            tmp_logs.pop(tmp_logs.index('T2 dist'))
-            tmp_logs.pop(tmp_logs.index('SE decay'))
-            tmp_logs.pop(tmp_logs.index('noise'))
-
-            for param in ['Ksdr', 'Ktc', 'Ksoe']:
-                axs[n_extra+3].semilogx(self[param].values,
-                                        self[param].z, drawstyle='steps-mid', label=param)
-            axs[n_extra+3].set_xlabel('K [m/day]')
-
-            for param in ['Tsdr', 'Ttc', 'Tsoe']:
-                axs[n_extra+4].semilogx(self[param].values, self[param].z,
-                                            drawstyle='steps-mid', label=param)
-            axs[n_extra+4].plot(self['soe'].values, self['soe'].z,
-                                drawstyle='steps-mid', label='soe')
-            axs[n_extra+4].set_xlabel('T [m$^2$/day]')
-
-            axs[n_extra+3].legend(fontsize='x-small')
-            axs[n_extra+4].legend(fontsize='x-small')
-            self['noise'].plot(ax=axs[n_extra+5])
-            axs[n_extra+5].set_xlabel('noise [%]')
-            axs[n_extra+0].set_ylim(self['totalf'].z.max(),
-                                    self['totalf'].z.min())
-            axs[n_extra+5].yaxis.set_label_position("right")
-            axs[n_extra+5].yaxis.tick_right()
-            axs[n_extra+5].yaxis.set_label('depth [m]')
-            return axs
-
-        self.plot = plot
-
-        def t2_trim(T2_min):
-            # new_bh = self.copy()
-            tmp = self['T2 dist'].copy()
-            five_ms = tmp.x_axis >= T2_min
-            lg1 = Log.two_dim(
-                tmp.z, tmp.x_axis[five_ms], tmp.values[:, five_ms], 'T2 dist')
-            mlT2 = 10**(np.sum(np.log10(lg1.x_axis[None, :])
-                        * lg1.values, axis=1) / np.sum(lg1.values, axis=1))
-            lg2 = Log(mlT2, tmp.z, tmp.z, 'mlT2')
-            lg3 = Log(np.sum(lg1.values, axis=1), tmp.z, tmp.z, 'totalf')
-            self.logs[self.names.index('T2 dist')] = lg1.copy()
-            self.logs[self.names.index('mlT2')] = lg2.copy()
-            self.logs[self.names.index('totalf')] = lg3.copy()
-        self.t2_trim = t2_trim
-
-        return self
-
-    @classmethod
     def load(cls, fname, **kwargs):
         """load saved borehole object
 
@@ -505,6 +382,124 @@ class Borehole:
         outfile = open(fname, 'wb')
         dump(self, outfile)
         outfile.close()
+
+class Dart(Borehole):
+    def __init__(self, export_folder, **kwargs):
+        logs = []
+
+        bh_name = os.path.split(export_folder)[-1]
+        # bh_name = ''
+        raw = np.genfromtxt(export_folder+'_1Dvectors.txt', names=True)
+        for name in raw.dtype.names:
+            if name not in ['depth', 'unix_time', 'board_temp', 'magnet_temp']:
+                tmp_log = Log(raw[name], raw['depth']-0.22 *
+                              0.5, raw['depth']+0.22*0.5, name)
+                logs.append(tmp_log)
+
+        SE_decay = np.genfromtxt(export_folder+'_SE_decay.txt')
+        SE_time = np.genfromtxt(export_folder+'_SE_decay_time.txt')
+        # bit of a hack
+        logs.append(Log.two_dim(logs[-1].z, SE_time,
+                    SE_decay[:, :-1], 'SE decay'))
+
+        T2_dist = np.genfromtxt(export_folder+'_T2_dist.txt')
+        T2_dist_bins = 10**np.genfromtxt(export_folder+'_T2_bins_log10s.txt')
+        # bit of a hack
+        logs.append(Log.two_dim(
+            logs[-1].z, T2_dist_bins, T2_dist[:, 1:], 'T2 dist'))
+
+
+        super().__init__(logs, **kwargs)
+        self.export_folder = export_folder
+
+    def plot_wc(self, ax=None, legend=False):
+        if ax is None:
+            fig, ax = plt.subplots()
+        else:
+            fig = ax.figure
+        base = np.zeros_like(self['freef'].values)
+        ax.plot(self['totalf'].values,
+                self['totalf'].z,  'k-', label='total',)
+        ax.fill_betweenx(
+            self['totalf'].z, base, self['freef'].values, label='free', facecolor='b')
+        base += self['freef'].values
+        ax.fill_betweenx(self['totalf'].z, base, base +
+                            self['capf'].values, label='cap.', facecolor='cyan')
+        base += self['capf'].values
+        ax.fill_betweenx(self['totalf'].z, base, base +
+                            self['clayf'].values, label='clay', facecolor='bisque')
+        if legend:
+            ax.legend(fontsize='x-small')
+        ax.set_xlim(0, 1)
+        ax.set_xlabel('Water Content [%]')
+        return ax
+
+    def plot(self, axs=None):
+        n_extra = len(self.logs)-15
+        if axs is None:
+
+            width_ratios = [1]*n_extra + [1, 2, 3, 1, 1, 1]
+            fig, axs = plt.subplots(
+                1, n_extra+6, sharey=True, width_ratios=width_ratios, figsize=(8,4))
+        else:
+            assert len(axs.flatten(
+            )) >= 6, "not enough subplots provided for a dart logging data display"
+            fig = axs.flatten()[0].figure
+
+        for i in range(n_extra):
+            self.logs[i].plot(ax=axs[i])
+        self.plot_wc(ax=axs[n_extra])
+        
+        self['SE decay'].plot(ax=axs[n_extra+1])
+        axs[n_extra+1].set_xlabel('SE decay [s]')
+        
+        self['T2 dist'].plot(ax=axs[n_extra+2], cmap='Greens');
+        self['mlT2'].plot(ax=axs[n_extra+2], color='r')
+        axs[n_extra+2].set_xlabel('T2 dist [s]')
+        axs[n_extra+2].set_xscale('log')
+
+        tmp_logs = self.names
+        tmp_logs.pop(tmp_logs.index('T2 dist'))
+        tmp_logs.pop(tmp_logs.index('SE decay'))
+        tmp_logs.pop(tmp_logs.index('noise'))
+
+        for param in ['Ksdr', 'Ktc', 'Ksoe']:
+            axs[n_extra+3].semilogx(self[param].values,
+                                    self[param].z, drawstyle='steps-mid', label=param)
+        axs[n_extra+3].set_xlabel('K [m/day]')
+
+        for param in ['Tsdr', 'Ttc', 'Tsoe']:
+            axs[n_extra+4].semilogx(self[param].values, self[param].z,
+                                        drawstyle='steps-mid', label=param)
+        axs[n_extra+4].plot(self['soe'].values, self['soe'].z,
+                            drawstyle='steps-mid', label='soe')
+        axs[n_extra+4].set_xlabel('T [m$^2$/day]')
+
+        axs[n_extra+3].legend(fontsize='x-small')
+        axs[n_extra+4].legend(fontsize='x-small')
+        self['noise'].plot(ax=axs[n_extra+5])
+        axs[n_extra+5].set_xlabel('noise [%]')
+        axs[n_extra+0].set_ylim(self['totalf'].z.max(),
+                                self['totalf'].z.min())
+        axs[n_extra+5].yaxis.set_label_position("right")
+        axs[n_extra+5].yaxis.tick_right()
+        axs[n_extra+5].yaxis.set_label('depth [m]')
+        return axs
+
+    def t2_trim(self, T2_min):
+        # new_bh = self.copy()
+        tmp = self['T2 dist'].copy()
+        five_ms = tmp.x_axis >= T2_min
+        lg1 = Log.two_dim(
+            tmp.z, tmp.x_axis[five_ms], tmp.values[:, five_ms], 'T2 dist')
+        mlT2 = 10**(np.sum(np.log10(lg1.x_axis[None, :])
+                    * lg1.values, axis=1) / np.sum(lg1.values, axis=1))
+        lg2 = Log(mlT2, tmp.z, tmp.z, 'mlT2')
+        lg3 = Log(np.sum(lg1.values, axis=1), tmp.z, tmp.z, 'totalf')
+        self.logs[self.names.index('T2 dist')] = lg1.copy()
+        self.logs[self.names.index('mlT2')] = lg2.copy()
+        self.logs[self.names.index('totalf')] = lg3.copy()
+
 
 
 def proj_func_maker(xy1, xy2):

@@ -11,17 +11,18 @@ else:
 
     cmd_file = __file__.replace('setup.py', 'scripts\\plog_opener.cmd')
     plotter_file = cmd_file.replace('plog_opener.cmd', 'plog_plotter.py')
+    secret_exe = sys.executable.replace('python.exe', 'pythonw.exe')
 
     if 'conda' in sys.executable:
         env = sys.executable.split(os.sep)[-2]
         activate_line = f'call conda activate {env}\n'
     else:
-        activate_line = f'call {sys.executable.replace("python.exe", "activate.bat\n")}'
+        activate_line = f'call {sys.executable.replace("python.exe", "activate.bat")}\n'
 
     with open(cmd_file, 'wt') as f:
         f.write(activate_line)
-        f.write('call echo %1\n')
-        f.write(f'call python {plotter_file} %1 \n')
+        # f.write('call echo %1\n')
+        f.write(f'call {secret_exe} {plotter_file} %1 \n')
 
 
 setup(
