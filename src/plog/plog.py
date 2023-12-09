@@ -438,9 +438,9 @@ class Dart(Borehole):
         n_extra = len(self.logs)-15
         if axs is None:
 
-            width_ratios = [1]*n_extra + [1, 2, 3, 1, 1, 1]
+            width_ratios = [1]*n_extra + [1, 2, 3, 1, 1]
             fig, axs = plt.subplots(
-                1, n_extra+6, sharey=True, width_ratios=width_ratios, figsize=(8,4))
+                1, n_extra+5, sharey=True, width_ratios=width_ratios, figsize=(8,4))
         else:
             assert len(axs.flatten(
             )) >= 6, "not enough subplots provided for a dart logging data display"
@@ -468,12 +468,12 @@ class Dart(Borehole):
                                     self[param].z, drawstyle='steps-mid', label=param)
         axs[n_extra+3].set_xlabel('K [m/day]')
 
-        for param in ['Tsdr', 'Ttc', 'Tsoe']:
-            axs[n_extra+4].semilogx(self[param].values, self[param].z,
-                                        drawstyle='steps-mid', label=param)
-        axs[n_extra+4].plot(self['soe'].values, self['soe'].z,
-                            drawstyle='steps-mid', label='soe')
-        axs[n_extra+4].set_xlabel('T [m$^2$/day]')
+        # for param in ['Tsdr', 'Ttc', 'Tsoe']:
+        #     axs[n_extra+4].semilogx(self[param].values, self[param].z,
+        #                                 drawstyle='steps-mid', label=param)
+        # axs[n_extra+4].plot(self['soe'].values, self['soe'].z,
+        #                     drawstyle='steps-mid', label='soe')
+        # axs[n_extra+4].set_xlabel('T [m$^2$/day]')
 
         axs[n_extra+3].legend(fontsize='x-small')
         axs[n_extra+4].legend(fontsize='x-small')
