@@ -6,8 +6,8 @@ import sys, os
 if '-skip_click' in sys.argv:
     sys.argv.pop(sys.argv.index('-skip_click'))
 else:
-    import clickable_extensions
-    clickable_extensions.run_association_opener_cmd()
+    #import clickable_extensions
+    #clickable_extensions.run_association_opener_cmd()
 
     cmd_file = __file__.replace('setup.py', 'scripts\\plog_opener.cmd')
     plotter_file = cmd_file.replace('plog_opener.cmd', 'plog_plotter.py')

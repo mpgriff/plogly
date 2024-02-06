@@ -483,13 +483,13 @@ class Dart(Borehole):
 
         axs[n_extra+3].legend(fontsize='x-small')
         axs[n_extra+4].legend(fontsize='x-small')
-        self['noise'].plot(ax=axs[n_extra+5])
-        axs[n_extra+5].set_xlabel('noise [%]')
+        self['noise'].plot(ax=axs[n_extra+4])
+        axs[n_extra+4].set_xlabel('noise [%]')
         axs[n_extra+0].set_ylim(self['totalf'].z.max(),
                                 self['totalf'].z.min())
-        axs[n_extra+5].yaxis.set_label_position("right")
-        axs[n_extra+5].yaxis.tick_right()
-        axs[n_extra+5].yaxis.set_label('depth [m]')
+        axs[n_extra+4].yaxis.set_label_position("right")
+        axs[n_extra+4].yaxis.tick_right()
+        axs[n_extra+4].yaxis.set_label('depth [m]')
         return axs
 
     def t2_trim(self, T2_min):
