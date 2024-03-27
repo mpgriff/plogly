@@ -1,4 +1,5 @@
 from matplotlib.cm import Blues
+import matplotlib
 from abc import ABC, abstractmethod
 import numpy as np
 import matplotlib.pyplot as plt
@@ -291,7 +292,7 @@ class Log(abcLog):
         return self
 
 
-class Borehole:
+class Borehole: 
     def __init__(self, logs, elevation=0., name='', x=None, y=None):
         self.name = name
         self.logs = logs
@@ -341,12 +342,17 @@ class Borehole:
         else:
             fig = axs.figure
 
+        if isinstance(axs, matplotlib.axes._axes.Axes):
+            axs = np.array([axs])
+
         for i, log in enumerate(self.logs):
             log.plot(ax=axs[i])
             axs[i].set_title(log.name)
             if self.elev != 0:
                 ax2 = axs[i].secondary_yaxis(
                     'right', functions=(self.elev2depth, self.depth2elev))
+            if log.name=='geology':
+                axs[i].set_aspect(0.15)
         return axs
 
     def copy(self):

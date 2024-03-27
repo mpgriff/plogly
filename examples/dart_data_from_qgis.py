@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import sys, os
 
-outfolder = 'C:/Users/au646858/_GIT/plog/examples/endelave/'
+outfolder = 'C:/Users/au563991/'
 if not os.path.exists(outfolder): os.mkdir(outfolder)
 
 bhgeo={ 'B6':Log.geology(['Torvemuld', 'sand ler', 'gra sand', 'brown sand', 'gra fine sand', 'sand silt ler', 'gra moronler', 'til', 'sand', 'gra sand', 'sand'],
