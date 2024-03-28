@@ -474,13 +474,6 @@ class Dart(Borehole):
                                     self[param].z, drawstyle='steps-mid', label=param)
         axs[n_extra+3].set_xlabel('K [m/day]')
 
-        # for param in ['Tsdr', 'Ttc', 'Tsoe']:
-        #     axs[n_extra+4].semilogx(self[param].values, self[param].z,
-        #                                 drawstyle='steps-mid', label=param)
-        # axs[n_extra+4].plot(self['soe'].values, self['soe'].z,
-        #                     drawstyle='steps-mid', label='soe')
-        # axs[n_extra+4].set_xlabel('T [m$^2$/day]')
-
         axs[n_extra+3].legend(fontsize='x-small')
         axs[n_extra+4].legend(fontsize='x-small')
         self['noise'].plot(ax=axs[n_extra+4])
@@ -757,7 +750,7 @@ class Section:
                     nan_count = 0
             keep = nan_count_v > max_bin_skip
             keep[nan_count_v == 0] = True
-            # keep = nan_count_v != 1
+            
             X = X[keep, :]
             Z = Z[keep, :]
             xsec = xsec[keep, :]
