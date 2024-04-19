@@ -38,8 +38,16 @@ class abcLog(ABC):
         return len(self.values)
 
     def copy(self):
-        from copy import deepcopy
-        return deepcopy(self)
+        if len(self.values.shape)==1:
+            new_log = self.__class__(self.values, self.depth_top, self.depth_bot, self.name, units=self.units, xy=(self.x, self.y))
+
+        
+        elif len(self.values.shape)==2:
+            new_log = self.__class__.two_dim(self.depth_top, self.x_axis, self.values, self.name, units=self.units, xy=(self.x, self.y))
+        
+        if self.elev is not None:
+            new_log.elevation(self.elev)
+        return new_log        
 
     def label_values(self, ax, xpos=1):
         for val, y_pos in zip(self.values, self.z):
@@ -281,12 +289,16 @@ class Log(abcLog):
         self.x_axis = x_axis
 
         def plot(ax=None, **kwargs):
+            cbar = kwargs.pop('cbar', False)
             if ax is None:
                 fig, ax = plt.subplots()
             else:
                 fig = ax.figure
-            ax.pcolor(self.x_axis, self.z, self.values, **kwargs)
-            return ax
+            pcm=ax.pcolor(self.x_axis, self.z, self.values, **kwargs)
+            
+            if cbar: res = (ax,pcm)
+            else: res = ax
+            return res
 
         self.plot = plot
         return self
@@ -414,8 +426,25 @@ class Dart(Borehole):
         logs.append(Log.two_dim(
             logs[-1].z, T2_dist_bins, T2_dist[:, 1:], 'T2 dist'))
 
-
         super().__init__(logs, **kwargs)
+
+        tmp = self['SE decay']
+        se_fwr = tmp.copy()
+        se_fwr.values = self.t2dist_forward()
+        se_fwr.name = 'SE synth'
+
+        se_res = se_fwr.copy()
+        se_res.values = tmp.values-se_fwr.values
+        se_res.name = 'SE residual'
+
+
+        misfit = np.mean((tmp.values - se_fwr.values)**2 / self['noise'].values[:,None]**2, axis=1)
+        misfit = Log(misfit, self['totalf'].depth_top, self['totalf'].depth_bot, 'misfit')
+
+        self.logs.append(se_fwr)
+        self.logs.append(se_res)
+        self.logs.append(misfit)
+        
         self.export_folder = export_folder
 
     def plot_wc(self, ax=None, legend=False):
@@ -441,7 +470,7 @@ class Dart(Borehole):
         return ax
 
     def plot(self, axs=None):
-        n_extra = len(self.logs)-15
+        n_extra = len(self.logs)-18
         if axs is None:
 
             width_ratios = [1]*n_extra + [1, 2, 3, 1, 1]
@@ -499,76 +528,101 @@ class Dart(Borehole):
         self.logs[self.names.index('mlT2')] = lg2.copy()
         self.logs[self.names.index('totalf')] = lg3.copy()
 
+    def t2dist_forward(self):
+        times = self['SE decay'].x_axis
+        T2val =  self['T2 dist'].x_axis
+        K = np.exp(-times[:,None]/T2val[None,:])
+        return 100.*(K @ self['T2 dist'].values.T).T
 
+class ProjectionLine:
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+        dx,dy = x[1]-x[0], y[1]-y[0]
+        self.phi = -np.arctan2(dy,dx)
+        self.R = np.array([[np.cos(self.phi), -np.sin(self.phi)],
+                           [np.sin(self.phi), np.cos(self.phi)]])
+        self.iR = np.array([[np.cos(-self.phi), -np.sin(-self.phi)],
+                            [np.sin(-self.phi), np.cos(-self.phi)]])
 
-def proj_func_maker(xy1, xy2):
-    (x1, y1) = xy1
-    (x2, y2) = xy2
-    m = (y2 - y1) / (x2 - x1)
-    norm = np.sqrt(1. + m ** 2)
-    ux, uy = 1.0 / norm, m / norm
-    mx_dist = np.sqrt((x2-x1)**2 + (y2-y1)**2)
-    if x2 < x1:
-        ux *= -1.
-        uy *= -1.
+        self.length = np.sqrt(dx**2 + dy**2)
 
-    def dist_func(x, y):
-        dist = (x - x1) * ux + (y - y1) * uy
-        if dist < 0.:
-            dist = np.inf
-        return dist
+    def inbounds(self, x, y, buffer=np.inf):
+        xp,yp = self.to_line_coords(x,y)
+        inbounds = (xp>=0) * (xp<=self.length)
+        inbounds *= np.abs(yp) <= buffer
+        return inbounds
+        
+    def to_line_coords(self, x, y):
+        xt,yt = x-self.x[0], y-self.y[0]
+        return np.dot(self.R, np.array([xt,yt]))
+    
+    def from_line_coords(self, xp, yp):
+        xt,yt = np.dot(self.iR, np.array([xp,yp]))
+        return xt+self.x[0], yt+self.y[0]
+    
 
-    def dist_func_inv(dist):
-        return (dist * ux + x1, dist * uy + y1)
+    
+class PieceWiseLine:
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+        self.n_segments = len(x)-1
+        self.lines = [ProjectionLine(x[i:i+2], y[i:i+2]) for i in range(self.n_segments)]
+        self.cumulative_length = np.cumsum([0]+[line.length for line in self.lines])
+        print(self.cumulative_length.shape)
 
-    return dist_func, dist_func_inv
+    @classmethod
+    def from_point_list(cls, points):
+        x = np.array([point[0] for point in points])
+        y = np.array([point[1] for point in points])
+        return cls(x,y)
+    
+    @property
+    def length(self):
+        return self.cumulative_length[-1]
+        
+    def inbounds(self, x, y, buffer=np.inf):
+        inbounds = np.zeros_like(x, dtype=bool)
+        for line in self.lines:
+            inbounds += line.inbounds(x,y, buffer=buffer)
+        return inbounds
 
+    def to_line_coords(self, x, y, return_segment_index=False):
+        projections = np.zeros((self.n_segments, 2, len(x)))
+        projection_dist = np.zeros_like(projections)
+        for i,line in enumerate(self.lines):
+            projections[i] = line.to_line_coords(x,y)
+            projection_dist[i] = projections[i]
+            # not in bound points lie beyond the ends of the line segement.
+            # There are instances when the extension of a particular line segement gets closer to a point than the line segment that is actually closest to the point. To avoid this, out of bound points get additional perpendicular distance added to them, so the ideal line segment is more likely to get assigned.
+            not_inbounds = np.logical_not(line.inbounds(x,y))
+            
+            projection_dist[i,1,not_inbounds] = np.abs(projection_dist[i,1,not_inbounds]) + np.abs(projections[i,0,not_inbounds])
+        idx_min = np.nanargmin(np.abs(projection_dist[:,1:,:]), axis=0)
 
-def piecewise_axis(pnts):
-    x = np.array([pnt[0] for pnt in pnts])
-    y = np.array([pnt[1] for pnt in pnts])
-    dx = np.insert(np.diff(x), 0, 0)
-    dy = np.insert(np.diff(y), 0, 0)
+        projections = idx_min.choose(projections)
 
-    seg_dist = np.sqrt(dx ** 2 + dy ** 2)
-    tot_dist = np.cumsum(seg_dist)
-
-    dist_funcs = []
-    inv_dist_funcs = []
-    for i in range(len(seg_dist)):
-        if i + 1 < len(seg_dist):
-            f, invf = proj_func_maker(pnts[i], pnts[i + 1])
-            dist_funcs.append(f)
-            inv_dist_funcs.append(invf)
-
-    def dist_func(x, y, return_perp=False):
-        min_dist = np.inf
-        min_index = None
-        res = (np.inf, np.inf)
-        for i, (f, invf) in enumerate(zip(dist_funcs, inv_dist_funcs)):
-            cdist = f(x, y)
-            px, py = invf(cdist)
-            d_proj = np.sqrt((x - px) ** 2 + (y - py) ** 2)
-            if d_proj < min_dist:
-                min_dist = cdist
-                res = (tot_dist[i]+cdist, d_proj)
-
-        if not return_perp:
-            res = res[0]
-        return res
-
-    def dist_func_inv(dist):
-        i_dist = np.searchsorted(tot_dist, dist, side='left')-1
-        if i_dist >= len(inv_dist_funcs):
-            i_dist = -1
-        f = inv_dist_funcs[i_dist]
-        return f(dist - tot_dist[i_dist])
-
-    return dist_func, dist_func_inv
+        projections[0,:] += np.squeeze(self.cumulative_length[idx_min])
+        if return_segment_index:
+            return projections[0], projections[1], idx_min[0]
+        else:
+            return projections[0], projections[1]
+    
+    
+    def from_line_coords(self, xp, yp):
+        if isinstance(xp, (int, float)):
+            xp, yp = np.array([xp], dtype=float), np.array([yp], dtype=float)
+        idx = np.clip(np.searchsorted(self.cumulative_length, xp, side='right')-1, 0, self.n_segments-1)
+        x = np.zeros_like(xp)
+        y = np.zeros_like(yp)
+        for i in range(len(xp)):
+            x[i], y[i] = self.lines[idx[i]].from_line_coords(xp[i]-self.cumulative_length[idx[i]], yp[i])
+        return x,y
 
 
 class Section:
-    def __init__(self, logs, proj_pnts=None, **kwargs):
+    def __init__(self, logs, profile_, **kwargs):
         self.logs = logs
 
         self.min_val = min([lg.values.min() for lg in self])
@@ -724,7 +778,7 @@ class Section:
             n = np.zeros_like(x_mesh)
             for i, lg in enumerate(self):
                 f = interp1d(lg.z, lg.values, bounds_error=False,
-                             fill_values=np.nan)
+                             fill_value=np.nan)
                 w = 1./perp_dist[i]
                 idx = np.searchsorted(x_mesh, x_dist[i])
                 xsec[idx] += f(all_z)*w
