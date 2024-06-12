@@ -444,7 +444,10 @@ class Dart(Borehole):
         self.logs.append(se_fwr)
         self.logs.append(se_res)
         self.logs.append(misfit)
-        
+
+        self.n_logs = len(self.logs)
+
+
         self.export_folder = export_folder
 
     def plot_wc(self, ax=None, legend=False):
@@ -470,7 +473,7 @@ class Dart(Borehole):
         return ax
 
     def plot(self, axs=None):
-        n_extra = len(self.logs)-18
+        n_extra = len(self.logs)-self.n_logs
         if axs is None:
 
             width_ratios = [1]*n_extra + [1, 2, 3, 1, 1]
@@ -533,6 +536,54 @@ class Dart(Borehole):
         T2val =  self['T2 dist'].x_axis
         K = np.exp(-times[:,None]/T2val[None,:])
         return 100.*(K @ self['T2 dist'].values.T).T
+    
+    def fit_monoexponential(self, smooth_data=None):
+        data = self['SE decay'].values
+        time = self['SE decay'].x_axis
+        if smooth_data is not None:
+            from scipy.ndimage import convolve1d
+            smooth_data = convolve1d(data, np.ones(smooth_data)/smooth_data, axis=0)
+        else:
+            smooth_data = data*1.        
+        x = time[1:]
+        xm = time.mean()
+        dx = x-xm
+        y = np.log(smooth_data[:, 1:])
+        ym = np.nanmean(y, axis=1, keepdims=True)
+        dy = y-ym
+
+        rT2 = np.nansum(dx[None,:]*dy, axis=1) / np.nansum(dx[None,:]**2, axis=1)
+        T2 = -1/rT2
+        WC = np.exp(np.squeeze(ym) - rT2*xm)/100.
+        fit_data = 100*WC[:,None]*np.exp(-self['SE decay'].x_axis[None,:]/T2[:,None])
+
+        monoWC = self['totalf'].copy()
+        monoWC.values = WC
+        monoWC.name = 'mono WC'
+
+        monoT2 = self['mlT2'].copy()
+        monoT2.values = T2
+        monoT2.name = 'mono T2'
+
+        se_mono = self['SE decay'].copy()
+        se_mono.values = fit_data
+        se_mono.name = 'SE mono synth'
+
+        se_mono_res = self['SE decay'].copy()
+        se_mono_res.values = self['SE decay'].values-se_mono.values
+        se_mono_res.name = 'SE mono residual'
+
+        mono_misfit = np.mean((self['SE decay'].values - se_mono.values)**2 / self['noise'].values[:,None]**2, axis=1)
+        mono_misfit = Log(mono_misfit, self['totalf'].depth_top, self['totalf'].depth_bot, 'mono misfit')
+
+        for new_log in [monoWC, monoT2, se_mono, se_mono_res, mono_misfit]:
+            if new_log.name in self.names:
+                idx = self.names.index(new_log.name)
+                self.logs[idx] = new_log
+            else:
+                self.logs.append(new_log)
+                self.n_logs += 1
+        return WC,T2
 
 class ProjectionLine:
     def __init__(self, x, y):
