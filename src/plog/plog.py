@@ -110,7 +110,7 @@ class Log(abcLog):
         if ax is None:
             fig, ax = plt.subplots()
 
-        cbar = False
+        cbar = kwargs.pop('cbar', False)
         if 'cmap' in kwargs:
             cmap = kwargs.pop('cmap')
             dx = kwargs.pop('dx', 1.)
