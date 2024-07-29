@@ -105,6 +105,8 @@ class Log(abcLog):
                 norm_val = 0.5 + 0.5*norm_val
             self.color = {val: cmap(nval)
                           for val, nval in zip(self.values, norm_val)}
+            
+        self.source_method = None
 
     def plot(self, ax=None, x_offset=0., **kwargs):
         if ax is None:
@@ -235,11 +237,14 @@ class Log(abcLog):
         depth = np.array(depth)
         depth_top = np.insert(depth, 0, 0)
         depth_bot = np.append(depth, 1.1*depth.max())
-        return cls(values, depth_top, depth_bot, name, **kwargs)
+        self = cls(values, depth_top, depth_bot, name, **kwargs)
+        self.source_method = 'standard'
+        return self
 
     @classmethod
     def geology(cls, geology, depth_top, depth_bottom, name='geology', color_dictionary=None, **kwargs):
         self = cls(geology, depth_top, depth_bottom, name, **kwargs)
+        self.source_method = 'geology'
 
         if color_dictionary is None:
             import matplotlib.colors as mcolors
@@ -364,8 +369,8 @@ class Borehole:
             if self.elev != 0:
                 ax2 = axs[i].secondary_yaxis(
                     'right', functions=(self.elev2depth, self.depth2elev))
-            if log.name=='geology':
-                axs[i].set_aspect(0.15)
+            if isinstance(log, Log) and log.source_method == 'geology':
+                axs[i].set_aspect(0.25)
         return axs
 
     def copy(self):
