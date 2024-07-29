@@ -333,7 +333,7 @@ class Borehole:
 
     @property
     def names(self):
-        return [x.name for x in self]
+        return [x.name for x in self.logs]
 
     @property
     def x(self):
@@ -526,11 +526,11 @@ class Dart(Borehole):
             tmp.z, tmp.x_axis[five_ms], tmp.values[:, five_ms], 'T2 dist')
         mlT2 = 10**(np.sum(np.log10(lg1.x_axis[None, :])
                     * lg1.values, axis=1) / np.sum(lg1.values, axis=1))
-        lg2 = Log(mlT2, tmp.z, tmp.z, 'mlT2')
-        lg3 = Log(np.sum(lg1.values, axis=1), tmp.z, tmp.z, 'totalf')
+        lg2                                    = Log(mlT2, tmp.z, tmp.z, 'mlT2')
+        lg3                                    = Log(np.sum(lg1.values, axis=1), tmp.z, tmp.z, 'totalf')
         self.logs[self.names.index('T2 dist')] = lg1.copy()
-        self.logs[self.names.index('mlT2')] = lg2.copy()
-        self.logs[self.names.index('totalf')] = lg3.copy()
+        self.logs[self.names.index('mlT2')]    = lg2.copy()
+        self.logs[self.names.index('totalf')]  = lg3.copy()
 
     def t2dist_forward(self):
         times = self['SE decay'].x_axis

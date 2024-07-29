@@ -16,7 +16,10 @@ try:
     with open(fname, 'rb') as f:
         obj = load(f)
     ax = obj.plot()
-    fig = ax.flatten()[0].get_figure()
+    try:
+        fig = ax.flatten()[0].get_figure()
+    except AttributeError:
+        fig = ax.get_figure()
     fig.suptitle(fname)
     plt.tight_layout()
     plt.show()
