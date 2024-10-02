@@ -679,7 +679,7 @@ class PieceWiseLine:
 
 
 class Section:
-    def __init__(self, logs, profile_, **kwargs):
+    def __init__(self, logs, proj_pnts=None, **kwargs):
         self.logs = logs
 
         self.min_val = min([lg.values.min() for lg in self])
@@ -697,11 +697,12 @@ class Section:
         return iter(self.logs)
 
     def make_projection_axis(self, *points):
+        self._profile = PieceWiseLine.from_point_list(points)
         assert len(points) > 1, "need atleast two points to define the axis"
         if len(points) == 2:
-            self.dist_func, self.dist_func_inv = proj_func_maker(*points)
+            self.dist_func, self.dist_func_inv = self._profile.proj_func_maker(*points)
         else:
-            self.dist_func, self.dist_func_inv = piecewise_axis(points)
+            self.dist_func, self.dist_func_inv = self._profile.piecewise_axis(points)
         idx_sort = np.argsort(self.x_dist)
         log_sort = []
         for i in idx_sort:
