@@ -358,7 +358,7 @@ class Borehole:
         if axs is None:
             fig, axs = plt.subplots(1, len(self.logs), sharey=True)
         else:
-            fig = axs.figure
+            fig = axs[0].figure
 
         if isinstance(axs, matplotlib.axes._axes.Axes):
             axs = np.array([axs])
@@ -603,6 +603,8 @@ class ProjectionLine:
                             [np.sin(-self.phi), np.cos(-self.phi)]])
 
         self.length = np.sqrt(dx**2 + dy**2)
+        self.m = dy/dx
+        self.b = y[0] - self.m*x[0]
 
     def inbounds(self, x, y, buffer=np.inf):
         xp,yp = self.to_line_coords(x,y)
@@ -627,7 +629,6 @@ class PieceWiseLine:
         self.n_segments = len(x)-1
         self.lines = [ProjectionLine(x[i:i+2], y[i:i+2]) for i in range(self.n_segments)]
         self.cumulative_length = np.cumsum([0]+[line.length for line in self.lines])
-        print(self.cumulative_length.shape)
 
     @classmethod
     def from_point_list(cls, points):
@@ -638,6 +639,14 @@ class PieceWiseLine:
     @property
     def length(self):
         return self.cumulative_length[-1]
+    
+    @property
+    def m(self):
+        return np.array([line.m for line in self.lines]).squeeze()
+
+    @property
+    def b(self):
+        return np.array([line.b for line in self.lines]).squeeze()
         
     def inbounds(self, x, y, buffer=np.inf):
         inbounds = np.zeros_like(x, dtype=bool)
