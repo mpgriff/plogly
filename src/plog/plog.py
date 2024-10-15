@@ -123,15 +123,17 @@ class Log(abcLog):
                 dx = np.ones_like(zset)*dx
             cbar = True
 
-            X = np.outer(np.array([-0.5,0, 0.5]), dx)
-            Z = np.repeat(zset, 3).reshape(-1, 3).T
-            V = np.repeat(self.values, 2).reshape(self.Nz, 2).T
-            pcm = ax.pcolormesh(X+x_offset, Z, V, shading='flat', cmap=cmap, **kwargs)
+            X = np.outer(np.array([-0.5,0.5]), dx)
+            Z = np.repeat(zset, 2).reshape(-1, 2).T
+            V = np.repeat(self.values, 1).reshape(self.Nz, 1).T
+            pcm = ax.pcolormesh(X+x_offset, Z, V,  cmap=cmap, **kwargs)
             tmpz = Z
 
             if border != '':
-                ax.plot(X[0]*2+x_offset, Z[0], border)
-                ax.plot(X[1]*2+x_offset, Z[1], border)
+                ax.plot(X[0]+x_offset, Z[0], border)
+                ax.plot(X[1]+x_offset, Z[1], border)
+                ax.plot(X[:,0]+x_offset, Z[:,0], border)
+                ax.plot(X[:,-1]+x_offset, Z[:,-1], border)
 
         elif np.all(self.depth_bot == self.depth_top):
             ax.plot(self.values+x_offset, self.z, **kwargs)
@@ -655,6 +657,8 @@ class PieceWiseLine:
         return inbounds
 
     def to_line_coords(self, x, y, return_segment_index=False):
+        if not isinstance(x, np.ndarray): x = np.array([x], dtype=float)
+        if not isinstance(y, np.ndarray): y = np.array([y], dtype=float)
         projections = np.zeros((self.n_segments, 2, len(x)))
         projection_dist = np.zeros_like(projections)
         for i,line in enumerate(self.lines):
@@ -688,6 +692,7 @@ class PieceWiseLine:
 
 
 class Section:
+    X = None
     def __init__(self, logs, proj_pnts=None, **kwargs):
         self.logs = logs
 
@@ -700,23 +705,18 @@ class Section:
             proj_pnts = [(lg.x, lg.y) for lg in self]
             while len(proj_pnts) > 500:
                 proj_pnts = proj_pnts[::2]
-        self.make_projection_axis(*proj_pnts)
+        self.profile = PieceWiseLine.from_point_list(proj_pnts)
 
     def __iter__(self):
         return iter(self.logs)
 
-    def make_projection_axis(self, *points):
-        self._profile = PieceWiseLine.from_point_list(points)
-        assert len(points) > 1, "need atleast two points to define the axis"
-        if len(points) == 2:
-            self.dist_func, self.dist_func_inv = self._profile.proj_func_maker(*points)
-        else:
-            self.dist_func, self.dist_func_inv = self._profile.piecewise_axis(points)
-        idx_sort = np.argsort(self.x_dist)
-        log_sort = []
-        for i in idx_sort:
-            log_sort.append(self[i])
-        self.logs = log_sort
+    def dist_func(self, x, y, return_perp=False):
+        xp,yp = self.profile.to_line_coords(x, y)
+        if return_perp: return xp,yp
+        else: return xp
+
+    def dist_func_inv(self, d):
+        return self.profile.from_line_coords(d, d*0.)
 
     @property
     def units(self):
@@ -732,7 +732,7 @@ class Section:
 
     @property
     def x_dist(self):
-        return np.array([self.dist_func(x, y) for x, y in zip(self.x, self.y)])
+        return self.dist_func(self.x, self.y)
 
     @property
     def proj_points(self):
@@ -773,26 +773,32 @@ class Section:
             dx = max(dx)
         for ax, log in zip(axs1, self):
             x_offset = self.dist_func(log.x, log.y) if offset else 0
-            x_offset += x_slide
-            xbnds[0] = min(x_offset-dx*2, xbnds[0])
-            xbnds[1] = max(x_offset+dx*2, xbnds[1])
+            xbnds[0] = min(x_offset-dx, xbnds[0])
+            xbnds[1] = max(x_offset+dx, xbnds[1])
             ax = log.plot(ax=ax, x_offset=x_offset, **kwargs)
 
         if offset:
             axs1[0].set_xlim(xbnds)
 
-        if not isinstance(ax, plt.Axes):
+        if kwargs.get('cbar', True)=='return':
+            return axs1, ax[1]
+        elif not isinstance(ax, plt.Axes):
             plt.colorbar(ax[1], ax=ax[0], fraction=0.01)
-        return axs1
+        else:
+            return axs1
 
     def plot_interpolated(self, ax=None, **kwargs):
         if ax is None:
             fig, ax = plt.subplots()
 
-        X, Z, Val = self.interpolate_xsection(
-            max_bin_skip=kwargs.pop('max_bin_skip', 1))
-        cmap = kwargs.pop('cmap', 'rainbow' if self.name ==
-                          'WC' else 'seismic')
+        if self.X is None:
+            self.X, self.Z, self.Val = self.interpolate_xsection(max_bin_skip=kwargs.pop('max_bin_skip', 1))
+        else:
+            del kwargs['max_bin_skip']
+        X,Z,Val = self.X, self.Z, self.Val
+
+
+        cmap = kwargs.pop('cmap', 'rainbow' if self.name == 'WC' else 'seismic')
         if 'levels' in kwargs or 'contour_lines' in kwargs:
             pcm = ax.contourf(X, Z, Val, cmap=cmap, **kwargs)
             if kwargs.get('contour_lines', False):
@@ -800,16 +806,23 @@ class Section:
                                   linewidth=0.1, colors='k')
                 ax.clabel(pcm2, fmt='%2.0f', colors='k', fontsize=11)
         else:
-            pcm = ax.pcolor(X, Z, Val, cmap=cmap, shading='auto', **kwargs)
+            cbar = kwargs.pop('cbar', None)
+            pcm = ax.pcolormesh(X, Z, Val, shading='auto', cmap=cmap, **kwargs)
+            kwargs['cbar']=cbar
 
-        if kwargs.get('cbar', True):
+        if kwargs.get('cbar', True)=='return':
+            return ax, pcm
+        elif kwargs.get('cbar', True):
             label = self.name
             if not self.units == '':
                 label += f' [{self.units}]'
             plt.colorbar(pcm, ax=ax, fraction=0.01, cmap=cmap, label=label)
+        xp,yp = self.dist_func(self.profile.x, self.profile.y, return_perp=True)
+        line_length  = xp.max()-xp.min()
+        ax.set_xlim(xp.min()-0.05*line_length, xp.max()+0.05*line_length)       
         return ax
 
-    def interpolate_xsection(self, max_bin_skip=1):
+    def interpolate_xsection(self, max_bin_skip=1, search_radius=None):
         if len(self.logs) < 20:
             from scipy.interpolate import interp2d, griddata
             x_dist = self.x_dist
@@ -833,28 +846,57 @@ class Section:
             return X, Z, iWC
         else:
             from scipy.interpolate import interp1d
-            x_dist = self.x_dist
-            xp, yp = self.proj_points
-            perp_dist = np.sqrt((self.x-xp)**2 + (self.y-yp)**2)
+            x_dist,perp_dist = self.dist_func(self.x, self.y, return_perp=True)
+            perp_dist = np.abs(perp_dist)
+            xp,yp = self.dist_func(self.profile.x, self.profile.y, return_perp=True)
+            line_length  = xp.max()-xp.min()
+            if search_radius is None:
+                search_radius = 0.05*line_length
 
-            avg_dx = (x_dist.max() / len(self.logs))*1.05
-            x_mesh = 0.5 + np.arange(len(self.logs)+2)*avg_dx
+            avg_dx = 3*line_length / sum(np.abs(perp_dist)<search_radius)
+            x_mesh = np.arange(xp.min(), xp.max(), avg_dx)
 
-            all_z = np.unique(np.concatenate([lg.z for lg in self]))
-            xsec = np.zeros(x_mesh.shape+all_z.shape)
-            n = np.zeros_like(x_mesh)
-            for i, lg in enumerate(self):
-                f = interp1d(lg.z, lg.values, bounds_error=False,
-                             fill_value=np.nan)
-                w = 1./perp_dist[i]
-                idx = np.searchsorted(x_mesh, x_dist[i])
-                xsec[idx] += f(all_z)*w
-                n[idx] += w
+            all_z = np.linspace(30, -30, 60)
 
-            xsec /= n[:, None]
-            xsec[n == 0, :] = np.nan
-            X, Z = np.meshgrid(x_mesh, all_z, indexing='ij')
+            log_redisc = Log(0.*all_z[:-1], all_z[1:], all_z[:-1], 'redisc')
+            log_redisc.elevation(0.)
 
+            near_logs = []
+            for i,lg in enumerate(self):
+                if perp_dist[i]<search_radius:
+                    clog = lg.rediscretize(log_redisc)
+                    clog.x = lg.x
+                    clog.y = lg.y
+                    near_logs.append(clog)
+
+
+
+            
+            xsec = np.zeros(x_mesh.shape+log_redisc.z.shape)
+            n = np.zeros_like(xsec)
+
+
+            x = np.array([lg.x for lg in near_logs])
+            y = np.array([lg.y for lg in near_logs])
+            x_dist,perp_dist = self.dist_func(x, y, return_perp=True)
+            perp_dist = np.abs(perp_dist)
+            print('number of close logs are: ', len(near_logs))
+            X,Z = np.meshgrid(x_mesh, log_redisc.z, indexing='ij')
+
+
+            for ix,x in enumerate(x_mesh):
+                r = np.sqrt((x_dist-x)**2 + perp_dist**2)
+                in_circle = (r<search_radius)*((x_dist-x)**2 < avg_dx**2)
+                weight = np.nan_to_num(1./r)
+                weight = weight/np.nansum(weight[in_circle])
+                
+                if np.sum(in_circle.astype(int))>0:
+                    for i,lg in enumerate(near_logs):
+                        if in_circle[i]:
+                            xsec[ix] += np.nan_to_num(lg.values*weight[i])
+                            n[ix]    += (lg.values/lg.values)*weight[i]
+            xsec /= n
+            xsec[xsec==0.] = np.nan
             nan_wall = np.isnan(xsec)
 
             # if an unfilled bin has data on either side; skip it and let the cmap interpolate over it instead of leaving it as a nan.
@@ -875,5 +917,5 @@ class Section:
             X = X[keep, :]
             Z = Z[keep, :]
             xsec = xsec[keep, :]
-
-            return X, Z, xsec
+            X,Z = np.meshgrid(X[:,0], log_redisc.z)
+            return X,Z, xsec.T
