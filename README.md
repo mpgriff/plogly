@@ -3,9 +3,14 @@ Plog is a flexible tool for Plotting LOGs.
 
 ## Setup
 To set up Plog, run from one directory above plog in the command line: 
-'''shell
+```shell
 pip install -e plog
-'''
+```
+this allows modification of the repository. Alternatively one may install directly from git using the command,
+```shell
+pip install git+https://github.com/tangentlabs/django-oscar-paypal.git
+```
+
 Plog is tested with Python 3.11.
 
 ## Usage
