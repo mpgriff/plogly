@@ -8,7 +8,7 @@ pip install -e plog
 ```
 this allows modification of the repository. Alternatively one may install directly from git using the command,
 ```shell
-pip install git+https://github.com/tangentlabs/django-oscar-paypal.git
+pip install git+https://github.com/mpgriff/plog.git
 ```
 
 Plog is tested with Python 3.11.
