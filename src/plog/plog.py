@@ -118,6 +118,8 @@ class Log(abcLog):
             dx = kwargs.pop('dx', 1.)
             border = kwargs.pop('border', '')
             zset = np.unique(np.concatenate((self.depth_top, self.depth_bot)))
+            if self.elev is not None:
+                zset = zset[::-1]
 
             if isinstance(dx, float) or isinstance(dx, int):
                 dx = np.ones_like(zset)*dx
@@ -136,7 +138,7 @@ class Log(abcLog):
                 ax.plot(X[:,-1]+x_offset, Z[:,-1], border)
 
         elif np.all(self.depth_bot == self.depth_top):
-            ax.plot(self.values+x_offset, self.z, **kwargs)
+            ax.plot(self.values+x_offset, self.z, label=self.name, **kwargs)
             tmpz = self.z
         else:
             vmin, vmax = kwargs.pop('vmin', self.values.min()), kwargs.pop(
@@ -144,10 +146,13 @@ class Log(abcLog):
             # this gives the plot a step-wise form, where the layer boundaries are correct.
             tmpz = np.vstack((self.depth_top, self.depth_bot)).T.flatten()
             tmpx = np.vstack((self.values, self.values)).T.flatten()
-            ax.plot(tmpx+x_offset, tmpz, **kwargs)
+            # kwargs.setdefault('label', self.name)
+            ax.plot(tmpx+x_offset, tmpz,  **kwargs)
             kwargs['vmin'], kwargs['vmax'] = vmin, vmax
         if self.units != '':
-            ax.set_xlabel(f'[{self.units}]')
+            ax.set_xlabel(self.name + f' [{self.units}]')
+        else:
+            ax.set_xlabel(self.name)
 
         if self.elev is None:
             ax.set_ylim(tmpz.max(), tmpz.min())
@@ -277,14 +282,17 @@ class Log(abcLog):
             ax.set_xlim([-dx/2, dx/2])
             ax.set_ylim(max(self.z)+max(self.thickness), 0)
             ax.set_xticks([])
-            # ax.set_aspect(0.5)
 
             if label:
                 ax.yaxis.set_label_position("right")
                 ax.yaxis.tick_right()
                 axgeo = ax.secondary_yaxis('left')
                 axgeo.set_yticks(self.z)
-                axgeo.set_yticklabels(self.values, rotation=45)
+                labels = [x.replace(' ', '\n') for x in self.values]
+                
+                # axgeo.set_yticklabels(labels)
+                axgeo.set_yticklabels(labels, rotation=45); axgeo.tick_params(axis='y', pad=-2)
+
             ax.set_ylabel('depth [m]')
             return ax
         self.plot = plot
@@ -367,7 +375,7 @@ class Borehole:
 
         for i, log in enumerate(self.logs):
             log.plot(ax=axs[i])
-            axs[i].set_title(log.name)
+            # axs[i].set_title(log.name)
             if self.elev != 0:
                 ax2 = axs[i].secondary_yaxis(
                     'right', functions=(self.elev2depth, self.depth2elev))
@@ -689,6 +697,16 @@ class PieceWiseLine:
         for i in range(len(xp)):
             x[i], y[i] = self.lines[idx[i]].from_line_coords(xp[i]-self.cumulative_length[idx[i]], yp[i])
         return x,y
+    
+    @property
+    def line_x(self):
+        xp,yp = self.to_line_coords(self.x, self.y)
+        return xp
+    
+    @property
+    def line_y(self):
+        xp,yp = self.to_line_coords(self.x, self.y)
+        return yp
 
 
 class Section:
