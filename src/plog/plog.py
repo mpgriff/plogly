@@ -436,7 +436,7 @@ class Dart(Borehole):
         logs.append(Log.two_dim(logs[-1].z, SE_time,
                     SE_decay[:, :-1], 'SE decay'))
 
-        T2_dist = np.genfromtxt(export_folder+'_T2_dist.txt')
+        T2_dist = np.genfromtxt(export_folder+'_T2_dist.txt')*100
         T2_dist_bins = 10**np.genfromtxt(export_folder+'_T2_bins_log10s.txt')
         # bit of a hack
         logs.append(Log.two_dim(
