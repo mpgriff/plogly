@@ -5,6 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Polygon
 import os
+from matplotlib import ticker
 
 
 class abcLog(ABC):
@@ -433,7 +434,7 @@ class Dart(Borehole):
         SE_decay = np.genfromtxt(export_folder+'_SE_decay.txt')
         SE_time = np.genfromtxt(export_folder+'_SE_decay_time.txt')
         # bit of a hack
-        logs.append(Log.two_dim(logs[-1].z, SE_time,
+        logs.append(Log.two_dim(logs[-1].z, SE_time*1000,
                     SE_decay[:, :-1], 'SE decay'))
 
         T2_dist = np.genfromtxt(export_folder+'_T2_dist.txt')*100
@@ -466,7 +467,7 @@ class Dart(Borehole):
 
         self.export_folder = export_folder
 
-    def plot_wc(self, ax=None, legend=False):
+    def plot_wc(self, ax=None, legend=True):
         if ax is None:
             fig, ax = plt.subplots()
         else:
@@ -483,18 +484,19 @@ class Dart(Borehole):
         ax.fill_betweenx(self['totalf'].z, base, base +
                             self['clayf'].values, label='clay', facecolor='bisque')
         if legend:
-            ax.legend(fontsize='x-small')
-        ax.set_xlim(0, 1)
-        ax.set_xlabel('Water Content [%]')
+            ax.legend(fontsize='small')
+        ax.set_xlim(0, .75)
+        ax.set_xlabel('Water Content [ratio]')
+        ax.set_ylabel('Depth [m]')
         return ax
 
     def plot(self, axs=None):
         n_extra = len(self.logs)-self.n_logs
         if axs is None:
 
-            width_ratios = [1]*n_extra + [1, 2, 3, 1, 1]
+            width_ratios = [1]*n_extra + [2, 2, 2, 1, 0.75]
             fig, axs = plt.subplots(
-                1, n_extra+5, sharey=True, width_ratios=width_ratios, figsize=(8,4))
+                1, n_extra+5, sharey=True, width_ratios=width_ratios, figsize=(11.69,8.27),layout='constrained')
         else:
             assert len(axs.flatten(
             )) >= 6, "not enough subplots provided for a dart logging data display"
@@ -503,14 +505,28 @@ class Dart(Borehole):
         for i in range(n_extra):
             self.logs[i].plot(ax=axs[i])
         self.plot_wc(ax=axs[n_extra])
+        axs[n_extra].locator_params(axis='x',nbins=8)
+        #axs[n_extra].set_axisbelow(True)
+        axs[n_extra].grid(visible=True,which='major',axis='both')
+        axs[n_extra].grid(visible=True,which='minor',axis='x')
         
-        self['SE decay'].plot(ax=axs[n_extra+1])
-        axs[n_extra+1].set_xlabel('SE decay [s]')
+        #self['SE decay'].x_axis *= 1000
+        _, pcm2 = self['SE decay'].plot(ax=axs[n_extra+1], cbar=True)
+        axs[n_extra+1].set_xlabel('SE decay [ms]')
+        plt.colorbar(pcm2, ax=axs[n_extra+1], orientation='horizontal',location='top',label='Amplitude [%]')
         
-        self['T2 dist'].plot(ax=axs[n_extra+2], cmap='Greens');
+        _, pcm = self['T2 dist'].plot(ax=axs[n_extra+2], cmap='Blues', cbar=True);
+        cb = plt.colorbar(pcm, ax=axs[n_extra+2], orientation='horizontal',location='top',label='Water Content [ratio]')
+        tick_locator = ticker.MaxNLocator(nbins=4)
+        cb.locator = tick_locator
+        cb.update_ticks()
+        axs[n_extra+2].grid(True)
+
         self['mlT2'].plot(ax=axs[n_extra+2], color='r')
         axs[n_extra+2].set_xlabel('T2 dist [s]')
         axs[n_extra+2].set_xscale('log')
+        axs[n_extra+2].axvline(0.003,linestyle='dashed')
+        axs[n_extra+2].axvline(0.033,linestyle='dashed')
 
         tmp_logs = self.names
         tmp_logs.pop(tmp_logs.index('T2 dist'))
@@ -521,9 +537,11 @@ class Dart(Borehole):
             axs[n_extra+3].semilogx(self[param].values,
                                     self[param].z, drawstyle='steps-mid', label=param)
         axs[n_extra+3].set_xlabel('K [m/day]')
+        axs[n_extra+3].set_axisbelow(True)
+        axs[n_extra+3].grid(True)
 
         axs[n_extra+3].legend(fontsize='x-small')
-        axs[n_extra+4].legend(fontsize='x-small')
+        #axs[n_extra+4].legend(fontsize='x-small')
         self['noise'].plot(ax=axs[n_extra+4])
         axs[n_extra+4].set_xlabel('noise [%]')
         axs[n_extra+0].set_ylim(self['totalf'].z.max(),
@@ -531,6 +549,8 @@ class Dart(Borehole):
         axs[n_extra+4].yaxis.set_label_position("right")
         axs[n_extra+4].yaxis.tick_right()
         axs[n_extra+4].yaxis.set_label('depth [m]')
+        axs[n_extra+4].set_axisbelow(True)
+        axs[n_extra+4].grid(True)
         return axs
 
     def t2_trim(self, T2_min):
