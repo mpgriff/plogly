@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import sys, os
 
-outfolder = 'C:/Users/au563991/'
+outfolder = 'C:/Users/au646858/'
 if not os.path.exists(outfolder): os.mkdir(outfolder)
 
 bhgeo={ 'B6':Log.geology(['Torvemuld', 'sand ler', 'gra sand', 'brown sand', 'gra fine sand', 'sand silt ler', 'gra moronler', 'til', 'sand', 'gra sand', 'sand'],
@@ -31,7 +31,9 @@ with open(outfolder+'endelave_boreholes.csv', 'wt') as f:
             bh.logs.insert(0, bhgeo[bhnum])
 
         outname = outfolder+bhnum+'.plog'
-
+        bh.plot()
         bh.save(outname)
         row = [str(x), str(y), bhnum, f'\"{outname}\"']
         f.write(','.join(row)+'\n')
+
+plt.show()

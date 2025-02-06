@@ -283,14 +283,13 @@ class Log(abcLog):
             geo2num = {geo: num for geo, num in zip(np.unique(np.array(self.values)), number_idx)}
             numscale = [geo2num[geo] for geo in self.values]
             colorscale = pcolors.carto.Earth
-            self.color = {val:pcolors.sample_colorscale(colorscale, num)[0] for val, num in zip(self.values, numscale)}
+            self.color = {val: pcolors.find_intermediate_color(colorscale[0], colorscale[-1], num, colortype='rgb') for val, num in zip(self.values, numscale)}
             
         elif isinstance(color_dictionary, str):
             from matplotlib import colormaps
             uniq_geo = np.unique(np.array(self.values))
-            colors = colormaps[color_dictionary](
-                np.linspace(0., 1., len(uniq_geo)))
-            self.color = {x: c for x, c in zip(uniq_geo, colors)}
+            colors = colormaps[color_dictionary](np.linspace(0., 1., len(uniq_geo)))
+            self.color = {x: f'rgb({int(c[0]*255)}, {int(c[1]*255)}, {int(c[2]*255)})' for x, c in zip(uniq_geo, colors)}
         else:
             self.color = color_dictionary
 
