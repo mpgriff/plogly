@@ -244,7 +244,7 @@ class Log(abcLog):
         """assumed to start at the surface, and extend to infinity in the bottom layer"""
         depth = np.array(depth)
         depth_top = np.insert(depth, 0, 0)
-        depth_bot = np.append(depth, 1.1*depth.max())
+        depth_bot = np.append(depth, kwargs.pop('bottom', 1.1*depth.max()))
         self = cls(values, depth_top, depth_bot, name, **kwargs)
         self.source_method = 'standard'
         return self
