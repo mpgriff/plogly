@@ -548,7 +548,7 @@ class Dart(Borehole):
                                 self['totalf'].z.min())
         axs[n_extra+4].yaxis.set_label_position("right")
         axs[n_extra+4].yaxis.tick_right()
-        axs[n_extra+4].yaxis.set_label('depth [m]')
+        axs[n_extra+4].yaxis.set_label_text('depth [m]')
         axs[n_extra+4].set_axisbelow(True)
         axs[n_extra+4].grid(True)
         return axs
