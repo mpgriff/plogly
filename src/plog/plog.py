@@ -22,6 +22,8 @@ class abcLog(ABC):
         self.x, self.y = xy
         self.elev = None
 
+
+
     @abstractmethod
     def plot(self, ax=None, **kwargs):
         pass
@@ -62,6 +64,14 @@ class abcLog(ABC):
         for mem in vars(self).keys():
             if mem.startswith('depth'):
                 exec_str = f'self.{mem} = elev - self.{mem}'
+                exec(exec_str)
+        return self
+    
+    def add_offset(self, offset):
+        """add an offset to the log values"""
+        for mem in vars(self).keys():
+            if mem.startswith('depth'):
+                exec_str = f'self.{mem} += offset'
                 exec(exec_str)
         return self
 
@@ -343,6 +353,12 @@ class Borehole:
     def elevation(self):
         for logs in self.logs:
             logs.elevation(self.elev)
+    
+    def add_offset(self, offset):
+        """add an offset to the log values"""
+        for logs in self.logs:
+            logs.add_offset(offset)
+        return self
 
     def __iter__(self):
         return iter(self.logs)
@@ -427,8 +443,8 @@ class Dart(Borehole):
         raw = np.genfromtxt(export_folder+'_1Dvectors.txt', names=True)
         for name in raw.dtype.names:
             if name not in ['depth', 'unix_time', 'board_temp', 'magnet_temp']:
-                tmp_log = Log(raw[name], raw['depth']-0.22 *
-                              0.5, raw['depth']+0.22*0.5, name)
+                tmp_log = Log(raw[name], raw['depth']-0.25 *
+                              0.5, raw['depth']+0.25*0.5, name)
                 logs.append(tmp_log)
 
         SE_decay = np.genfromtxt(export_folder+'_SE_decay.txt')
@@ -485,7 +501,7 @@ class Dart(Borehole):
                             self['clayf'].values, label='clay', facecolor='bisque')
         if legend:
             ax.legend(fontsize='small')
-        ax.set_xlim(0, .75)
+        ax.set_xlim(0, 1.)
         ax.set_xlabel('Water Content [ratio]')
         ax.set_ylabel('Depth [m]')
         return ax
@@ -499,7 +515,7 @@ class Dart(Borehole):
                 1, n_extra+5, sharey=True, width_ratios=width_ratios, figsize=(11.69,8.27),layout='constrained')
         else:
             assert len(axs.flatten(
-            )) >= 6, "not enough subplots provided for a dart logging data display"
+            )) >= 5, "not enough subplots provided for a dart logging data display"
             fig = axs.flatten()[0].figure
 
         for i in range(n_extra):
@@ -544,6 +560,7 @@ class Dart(Borehole):
         #axs[n_extra+4].legend(fontsize='x-small')
         self['noise'].plot(ax=axs[n_extra+4])
         axs[n_extra+4].set_xlabel('noise [%]')
+        axs[n_extra+4].set_xlim(0., 20)
         axs[n_extra+0].set_ylim(self['totalf'].z.max(),
                                 self['totalf'].z.min())
         axs[n_extra+4].yaxis.set_label_position("right")
