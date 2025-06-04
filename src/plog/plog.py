@@ -1,11 +1,12 @@
-from matplotlib.cm import Blues
-import matplotlib
 from abc import ABC, abstractmethod
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Polygon
 import os
-from matplotlib import ticker
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
+
 
 
 class abcLog(ABC):
@@ -105,23 +106,28 @@ class abcLog(ABC):
         dump(self, outfile)
         outfile.close()
 
+import plotly.colors as pcolors
 
 class Log(abcLog):
-    def __init__(self, values, depth_top, depth_bot, log_name, units='', cmap=Blues, **kwargs):
+    def __init__(self, values, depth_top, depth_bot, log_name, units='', colorscale=pcolors.sequential.Blues, **kwargs):
         super().__init__(values, depth_top, depth_bot, log_name, units=units, **kwargs)
 
         if isinstance(self.values[0], int) or isinstance(self.values[0], float):
             norm_val = self.values / np.abs(self.values).max()
             if np.any(norm_val < 0.):
                 norm_val = 0.5 + 0.5*norm_val
-            self.color = {val: cmap(nval)
-                          for val, nval in zip(self.values, norm_val)}
+            self.color = {val: pcolors.find_intermediate_color(colorscale[0], colorscale[-1], nval, colortype='rgb')
+                  for val, nval in zip(self.values, norm_val)}
             
         self.source_method = None
 
-    def plot(self, ax=None, x_offset=0., **kwargs):
-        if ax is None:
-            fig, ax = plt.subplots()
+    def plot(self, fig=None, x_offset=0., **kwargs):
+        if fig is None:
+            fig = go.Figure()
+
+        if 'color' in kwargs:
+            linecolor = kwargs.pop('color')
+            kwargs['line'] = dict(color=linecolor)            
 
         cbar = kwargs.pop('cbar', False)
         if 'cmap' in kwargs:
@@ -133,47 +139,66 @@ class Log(abcLog):
                 zset = zset[::-1]
 
             if isinstance(dx, float) or isinstance(dx, int):
-                dx = np.ones_like(zset)*dx
+                dx = np.ones_like(zset) * dx
             cbar = True
 
-            X = np.outer(np.array([-0.5,0.5]), dx)
-            Z = np.repeat(zset, 2).reshape(-1, 2).T
-            V = np.repeat(self.values, 1).reshape(self.Nz, 1).T
-            pcm = ax.pcolormesh(X+x_offset, Z, V,  cmap=cmap, **kwargs)
+            X = np.outer(np.array([-0.5, 0, 0.5]), dx)
+            Z = np.repeat(zset, 3).reshape(-1, 3).T
+            V = np.repeat(self.values, 2).reshape(self.Nz, 2).T
+
+            fig.add_trace(go.Heatmap(
+                x=X.flatten() + x_offset,
+                y=Z.flatten(),
+                z=V.flatten(),
+                colorscale=cmap,
+                colorbar=dict(title=self.units) if cbar else None
+            ))
             tmpz = Z
 
             if border != '':
-                ax.plot(X[0]+x_offset, Z[0], border)
-                ax.plot(X[1]+x_offset, Z[1], border)
-                ax.plot(X[:,0]+x_offset, Z[:,0], border)
-                ax.plot(X[:,-1]+x_offset, Z[:,-1], border)
+                fig.add_trace(go.Scatter(
+                    x=X[0] * 2 + x_offset,
+                    y=Z[0],
+                    mode='lines',
+                    line=dict(color=border)
+                ))
+                fig.add_trace(go.Scatter(
+                    x=X[1] * 2 + x_offset,
+                    y=Z[1],
+                    mode='lines',
+                    name=self.name,
+                    line=dict(color=border)
+                ))
 
         elif np.all(self.depth_bot == self.depth_top):
-            ax.plot(self.values+x_offset, self.z, label=self.name, **kwargs)
+
+            fig.add_trace(go.Scatter(
+                x=self.values + x_offset,
+                y=self.z,
+                mode='lines',
+                **kwargs
+            ))
             tmpz = self.z
         else:
-            vmin, vmax = kwargs.pop('vmin', self.values.min()), kwargs.pop(
-                'vmax', self.values.max())
-            # this gives the plot a step-wise form, where the layer boundaries are correct.
+            vmin, vmax = kwargs.pop('vmin', self.values.min()), kwargs.pop('vmax', self.values.max())
             tmpz = np.vstack((self.depth_top, self.depth_bot)).T.flatten()
             tmpx = np.vstack((self.values, self.values)).T.flatten()
-            # kwargs.setdefault('label', self.name)
-            ax.plot(tmpx+x_offset, tmpz,  **kwargs)
+            fig.add_trace(go.Scatter(
+                x=tmpx + x_offset,
+                y=tmpz,
+                name=self.name,
+                mode='lines',
+                **kwargs
+            ))
             kwargs['vmin'], kwargs['vmax'] = vmin, vmax
+
         if self.units != '':
-            ax.set_xlabel(self.name + f' [{self.units}]')
-        else:
-            ax.set_xlabel(self.name)
+            fig.update_xaxes(title_text=f'[{self.units}]')
 
         if self.elev is None:
-            ax.set_ylim(tmpz.max(), tmpz.min())
+            fig.update_yaxes(range=[tmpz.max(), tmpz.min()])
 
-        if cbar:
-            res = (ax, pcm)
-        else:
-            res = ax
-
-        return res
+        return fig
 
     def plot_cyklo(self, ax=None, elevation=0., xy=(0, 0), unit_rad=1., dr=0.2, m_per_turn=100.):
         dr *= unit_rad
@@ -265,47 +290,80 @@ class Log(abcLog):
         self.source_method = 'geology'
 
         if color_dictionary is None:
-            import matplotlib.colors as mcolors
-            self.color = {x: c for x, c in zip(
-                np.unique(np.array(self.values)), mcolors.TABLEAU_COLORS.keys())}
+            n_types = len(np.unique(np.array(self.values)))
+            number_idx = np.linspace(0, 1, n_types)
+            geo2num = {geo: num for geo, num in zip(np.unique(np.array(self.values)), number_idx)}
+            numscale = [geo2num[geo] for geo in self.values]
+            colorscale = pcolors.carto.Earth
+            self.color = {val: pcolors.find_intermediate_color(colorscale[0], colorscale[-1], num, colortype='rgb') for val, num in zip(self.values, numscale)}
+            
         elif isinstance(color_dictionary, str):
             from matplotlib import colormaps
             uniq_geo = np.unique(np.array(self.values))
-            colors = colormaps[color_dictionary](
-                np.linspace(0., 1., len(uniq_geo)))
-            self.color = {x: c for x, c in zip(uniq_geo, colors)}
+            colors = colormaps[color_dictionary](np.linspace(0., 1., len(uniq_geo)))
+            self.color = {x: f'rgb({int(c[0]*255)}, {int(c[1]*255)}, {int(c[2]*255)})' for x, c in zip(uniq_geo, colors)}
         else:
             self.color = color_dictionary
 
-        def plot(ax=None, dx=1., hatch=None, label=True):
-            if ax is None:
-                fig, ax = plt.subplots()
+        def plot(dx=1., hatch=None, label=True):
+            fig = go.Figure()
+
             if hatch is None:
                 hatch = [None]*len(self.values)
 
             for i, (dpth_t, dpth_b, geo) in enumerate(zip(self.depth_top, self.depth_bot, self.values)):
-                layer = np.array([[-dx/2, dpth_t],     [dx/2, dpth_t],
-                                  [dx/2, dpth_b],  [-dx/2, dpth_b],
-                                  [-dx/2, dpth_t]])
-                poly = Polygon(
-                    layer, facecolor=self.color[geo], hatch=hatch[i])
-                ax.add_patch(poly)
-            ax.set_xlim([-dx/2, dx/2])
-            ax.set_ylim(max(self.z)+max(self.thickness), 0)
-            ax.set_xticks([])
+                layer_x = [-dx/2, dx/2, dx/2, -dx/2, -dx/2]
+                layer_y = [dpth_t, dpth_t, dpth_b, dpth_b, dpth_t]
+                fig.add_trace(go.Scatter(
+                    x=layer_x,
+                    y=layer_y,
+                    fill='toself',
+                    mode='lines',
+                    fillcolor=self.color[geo],
+                    line=dict(color=self.color[geo]),
+                    name=geo,
+                    showlegend=False
+                ))
+
+            fig.update_layout(
+                xaxis=dict(
+                    showticklabels=False,
+                    showgrid=False,
+                    zeroline=False
+                ),
+                yaxis=dict(
+                    autorange='reversed',
+                    title='depth [m]',
+                    showgrid=False,
+                    zeroline=False
+                ),
+                shapes=[
+                    dict(
+                        type="rect",
+                        x0=-dx/2,
+                        y0=max(self.z)+max(self.thickness),
+                        x1=dx/2,
+                        y1=0,
+                        line=dict(
+                            color="Black",
+                            width=2
+                        )
+                    )
+                ]
+            )
 
             if label:
-                ax.yaxis.set_label_position("right")
-                ax.yaxis.tick_right()
-                axgeo = ax.secondary_yaxis('left')
-                axgeo.set_yticks(self.z)
-                labels = [x.replace(' ', '\n') for x in self.values]
-                
-                # axgeo.set_yticklabels(labels)
-                axgeo.set_yticklabels(labels, rotation=45); axgeo.tick_params(axis='y', pad=-2)
+                fig.update_yaxes(
+                    tickmode='array',
+                    tickvals=self.z,
+                    ticktext=self.values,
+                    ticks="outside",
+                    ticklen=10,
+                    tickcolor='black'
+                )
 
-            ax.set_ylabel('depth [m]')
-            return ax
+            return fig
+
         self.plot = plot
         return self
 
@@ -318,14 +376,24 @@ class Log(abcLog):
         def plot(ax=None, **kwargs):
             cbar = kwargs.pop('cbar', False)
             if ax is None:
-                fig, ax = plt.subplots()
+                fig = go.Figure()
             else:
                 fig = ax.figure
-            pcm=ax.pcolor(self.x_axis, self.z, self.values, **kwargs)
-            
-            if cbar: res = (ax,pcm)
-            else: res = ax
-            return res
+
+            fig.add_trace(go.Heatmap(
+                x=self.x_axis,
+                y=self.z,
+                z=self.values,
+                colorbar=dict(title=self.units, orientation='h', y=-0.2) if cbar else None,
+                **kwargs
+            ))
+            if self.elev is None:
+                fig.update_yaxes(autorange='reversed')
+                fig.update_yaxes(title_text='depth [m]')
+            else:
+                fig.update_yaxes(title_text='elevation [m]')
+
+            return fig
 
         self.plot = plot
         return self
@@ -381,24 +449,28 @@ class Borehole:
 
         return tmp_log
 
-    def plot(self, axs=None):
-        if axs is None:
-            fig, axs = plt.subplots(1, len(self.logs), sharey=True)
-        else:
-            fig = axs[0].figure
-
-        if isinstance(axs, matplotlib.axes._axes.Axes):
-            axs = np.array([axs])
+    def plot(self, fig=None):
+        if fig is None:
+            fig = make_subplots(rows=1, cols=len(self.logs), shared_yaxes=True, subplot_titles=[log.name for log in self.logs])
 
         for i, log in enumerate(self.logs):
-            log.plot(ax=axs[i])
-            # axs[i].set_title(log.name)
+            log_fig = log.plot()
+            for trace in log_fig.data:
+                fig.add_trace(trace, row=1, col=i+1)
+            
             if self.elev != 0:
-                ax2 = axs[i].secondary_yaxis(
-                    'right', functions=(self.elev2depth, self.depth2elev))
+                fig.update_yaxes(
+                    secondary_y=True,
+                    row=1, col=i+1,
+                    secondary_y_title_text='Elevation',
+                    secondary_y_functions=(self.elev2depth, self.depth2elev)
+                )
+            
             if isinstance(log, Log) and log.source_method == 'geology':
-                axs[i].set_aspect(0.25)
-        return axs
+                fig.update_yaxes(scaleanchor="x", scaleratio=0.25, row=1, col=i+1)
+
+        fig.update_layout(height=600, width=100*len(self.logs))
+        return fig
 
     def copy(self):
         from copy import deepcopy
@@ -483,92 +555,129 @@ class Dart(Borehole):
 
         self.export_folder = export_folder
 
-    def plot_wc(self, ax=None, legend=True):
-        if ax is None:
-            fig, ax = plt.subplots()
-        else:
-            fig = ax.figure
+    def plot_wc(self, fig=None, legend=False):
+        if fig is None:
+            fig = go.Figure()
+
         base = np.zeros_like(self['freef'].values)
-        ax.plot(self['totalf'].values,
-                self['totalf'].z,  'k-', label='total',)
-        ax.fill_betweenx(
-            self['totalf'].z, base, self['freef'].values, label='free', facecolor='b')
+
+        # Plot total
+        fig.add_trace(go.Scatter(
+            x=self['totalf'].values,
+            y=self['totalf'].z,
+            mode='lines',
+            name='total',
+            line=dict(color='black')
+        ))
+
+        # Fill free
+        fig.add_trace(go.Scatter(
+            x=self['freef'].values,
+            y=self['totalf'].z,
+            fill='tozeroy',
+            name='free',
+            fillcolor='blue',
+            mode='none'
+        ))
+
         base += self['freef'].values
-        ax.fill_betweenx(self['totalf'].z, base, base +
-                            self['capf'].values, label='cap.', facecolor='cyan')
+
+        # Fill capillary
+        fig.add_trace(go.Scatter(
+            x=base + self['capf'].values,
+            y=self['totalf'].z,
+            fill='tonexty',
+            name='cap.',
+            fillcolor='cyan',
+            mode='none'
+        ))
+
         base += self['capf'].values
-        ax.fill_betweenx(self['totalf'].z, base, base +
-                            self['clayf'].values, label='clay', facecolor='bisque')
+
+        # Fill clay
+        fig.add_trace(go.Scatter(
+            x=base + self['clayf'].values,
+            y=self['totalf'].z,
+            fill='tonexty',
+            name='clay',
+            fillcolor='bisque',
+            mode='none'
+        ))
+
         if legend:
-            ax.legend(fontsize='small')
-        ax.set_xlim(0, 1.)
-        ax.set_xlabel('Water Content [ratio]')
-        ax.set_ylabel('Depth [m]')
-        return ax
-
-    def plot(self, axs=None):
-        n_extra = len(self.logs)-self.n_logs
-        if axs is None:
-
-            width_ratios = [1]*n_extra + [2, 2, 2, 1, 0.75]
-            fig, axs = plt.subplots(
-                1, n_extra+5, sharey=True, width_ratios=width_ratios, figsize=(11.69,8.27),layout='constrained')
+            fig.update_layout(showlegend=True, legend=dict(font=dict(size=10)))
         else:
-            assert len(axs.flatten(
-            )) >= 5, "not enough subplots provided for a dart logging data display"
-            fig = axs.flatten()[0].figure
+            fig.update_layout(showlegend=False)
+
+        fig.update_xaxes(range=[0, 1], title_text='Water Content [%]')
+        fig.update_yaxes(title_text='depth [m]')
+
+        return fig
+
+    def plot(self, fig=None):
+        n_extra = len(self.logs) - self.n_logs
+
+        if fig is None:
+            fig = make_subplots(
+                rows=1, cols=n_extra + 5, shared_yaxes=True,
+                column_widths=[0.5]*n_extra + [1, 1, 3, 1, 1],
+                subplot_titles=[log.name for log in self.logs[:n_extra]] + ['Water Content', 'SE decay', 'T2 dist', 'K values', 'Noise'],
+                horizontal_spacing=0.05,
+                vertical_spacing=0.05
+            )
+
+        wc_fig = self.plot_wc()
+        for trace in wc_fig.data:
+            fig.add_trace(trace, row=1, col=n_extra+1)
+        fig.update_xaxes(range=[0, 1], title_text='Water Content [%]', row=1, col=n_extra+1)
 
         for i in range(n_extra):
-            self.logs[i].plot(ax=axs[i])
-        self.plot_wc(ax=axs[n_extra])
-        axs[n_extra].locator_params(axis='x',nbins=8)
-        #axs[n_extra].set_axisbelow(True)
-        axs[n_extra].grid(visible=True,which='major',axis='both')
-        axs[n_extra].grid(visible=True,which='minor',axis='x')
-        
-        #self['SE decay'].x_axis *= 1000
-        _, pcm2 = self['SE decay'].plot(ax=axs[n_extra+1], cbar=True)
-        axs[n_extra+1].set_xlabel('SE decay [ms]')
-        plt.colorbar(pcm2, ax=axs[n_extra+1], orientation='horizontal',location='top',label='Amplitude [%]')
-        
-        _, pcm = self['T2 dist'].plot(ax=axs[n_extra+2], cmap='Blues', cbar=True);
-        cb = plt.colorbar(pcm, ax=axs[n_extra+2], orientation='horizontal',location='top',label='Water Content [ratio]')
-        tick_locator = ticker.MaxNLocator(nbins=4)
-        cb.locator = tick_locator
-        cb.update_ticks()
-        axs[n_extra+2].grid(True)
+            log_fig = self.logs[i].plot()
+            for trace in log_fig.data:
+                fig.add_trace(trace, row=1, col=i+1)
+                fig.update_xaxes(tickvals=log_fig.layout.xaxis.tickvals, ticktext=log_fig.layout.xaxis.ticktext, row=1, col=i+1)
+                fig.update_yaxes(tickvals=log_fig.layout.yaxis.tickvals, ticktext=log_fig.layout.yaxis.ticktext, row=1, col=i+1)
 
-        self['mlT2'].plot(ax=axs[n_extra+2], color='r')
-        axs[n_extra+2].set_xlabel('T2 dist [s]')
-        axs[n_extra+2].set_xscale('log')
-        axs[n_extra+2].axvline(0.003,linestyle='dashed')
-        axs[n_extra+2].axvline(0.033,linestyle='dashed')
 
-        tmp_logs = self.names
-        tmp_logs.pop(tmp_logs.index('T2 dist'))
-        tmp_logs.pop(tmp_logs.index('SE decay'))
-        tmp_logs.pop(tmp_logs.index('noise'))
+        se_decay_fig = self['SE decay'].plot(colorscale='Viridis', showscale=False)
+        for trace in se_decay_fig.data:
+            fig.add_trace(trace, row=1, col=n_extra+2)
+        fig.update_xaxes(title_text='SE decay [s]', row=1, col=n_extra+2)
+
+        t2_dist_fig = self['T2 dist'].plot(showscale=False, colorscale='Greens')
+        for trace in t2_dist_fig.data:
+            fig.add_trace(trace, row=1, col=n_extra+3)
+        mlT2_fig = self['mlT2'].plot(color='red')
+        for trace in mlT2_fig.data:
+            fig.add_trace(trace, row=1, col=n_extra+3)
+        fig.update_xaxes(title_text='T2 dist [s]', type='log', row=1, col=n_extra+3)
 
         for param in ['Ksdr', 'Ktc', 'Ksoe']:
-            axs[n_extra+3].semilogx(self[param].values,
-                                    self[param].z, drawstyle='steps-mid', label=param)
-        axs[n_extra+3].set_xlabel('K [m/day]')
-        axs[n_extra+3].set_axisbelow(True)
-        axs[n_extra+3].grid(True)
+            fig.add_trace(go.Scatter(
+                x=self[param].values,
+                y=self[param].z,
+                mode='lines',
+                name=param,
+                line_shape='hv'
+            ), row=1, col=n_extra+4)
+        fig.update_xaxes(title_text='K [m/day]', type='log', row=1, col=n_extra+4)
+        fig.update_layout(showlegend=True)#, legend=dict(font=dict(size='x-small')))
 
-        axs[n_extra+3].legend(fontsize='x-small')
-        #axs[n_extra+4].legend(fontsize='x-small')
-        self['noise'].plot(ax=axs[n_extra+4])
-        axs[n_extra+4].set_xlabel('noise [%]')
-        axs[n_extra+4].set_xlim(0., 20)
-        axs[n_extra+0].set_ylim(self['totalf'].z.max(),
-                                self['totalf'].z.min())
-        axs[n_extra+4].yaxis.set_label_position("right")
-        axs[n_extra+4].yaxis.tick_right()
-        axs[n_extra+4].yaxis.set_label_text('depth [m]')
-        axs[n_extra+4].set_axisbelow(True)
-        axs[n_extra+4].grid(True)
-        return axs
+        noise_fig = self['noise'].plot()
+        for trace in noise_fig.data:
+            fig.add_trace(trace, row=1, col=n_extra+5)
+        fig.update_xaxes(title_text='noise [%]', row=1, col=n_extra+5)
+
+        fig.update_yaxes(title_text='depth [m]', row=1, col=n_extra+5)
+        fig.update_yaxes(autorange='reversed', row=1, col=n_extra+1)
+
+        # for i in range(1, n_extra + 6):
+        #     fig.update_xaxes(showline=True, linewidth=1, linecolor='black', row=1, col=i)
+        #     fig.update_yaxes(showline=True, linewidth=1, linecolor='black', row=1, col=i)
+
+
+        return fig
+
 
     def t2_trim(self, T2_min):
         # new_bh = self.copy()
@@ -974,3 +1083,15 @@ class Section:
             xsec = xsec[keep, :]
             X,Z = np.meshgrid(X[:,0], log_redisc.z)
             return X,Z, xsec.T
+
+            return X, Z, xsec
+        
+
+if __name__ == '__main__':
+    # lg = Log.standard(np.random.rand(10), np.arange(10)[1:], 'random')
+    x = np.linspace(0, 1, 101)
+    z = np.linspace(0, 40, 61)
+    val = np.sin(x[:, None] + z[None, :]).T
+    lg2 = Log.two_dim(z, x, val, 'random2')
+    fig = lg2.plot(colorscale='Viridis')
+    fig.show()
