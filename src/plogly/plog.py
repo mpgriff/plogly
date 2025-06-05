@@ -1,7 +1,5 @@
 from abc import ABC, abstractmethod
 import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.patches import Polygon
 import os
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -98,6 +96,7 @@ class abcLog(ABC):
 
         Args:
             fname (str): path to desired save location
+
         Returns:
             None
         """
@@ -138,37 +137,35 @@ class Log(abcLog):
             if self.elev is not None:
                 zset = zset[::-1]
 
-            if isinstance(dx, float) or isinstance(dx, int):
-                dx = np.ones_like(zset) * dx
+            # if isinstance(dx, float) or isinstance(dx, int):
+            #     dx = np.ones_like(zset) * dx
             cbar = True
 
-            X = np.outer(np.array([-0.5, 0, 0.5]), dx)
-            Z = np.repeat(zset, 3).reshape(-1, 3).T
-            V = np.repeat(self.values, 2).reshape(self.Nz, 2).T
+            Z = np.repeat(zset, 2).reshape(2,-1)
+            V = np.repeat(self.values, 2).reshape(self.Nz, 2)
 
             fig.add_trace(go.Heatmap(
-                x=X.flatten() + x_offset,
-                y=Z.flatten(),
-                z=V.flatten(),
+                x=np.array([-0.25, 0.25])*dx + x_offset,
+                y=zset,
+                z=V,
                 colorscale=cmap,
-                colorbar=dict(title=self.units) if cbar else None
+                colorbar=dict(title=self.units) if cbar else None,
+                showlegend=False,
+                showscale=cbar,
+                **kwargs
             ))
             tmpz = Z
 
             if border != '':
                 fig.add_trace(go.Scatter(
-                    x=X[0] * 2 + x_offset,
-                    y=Z[0],
+                    x=np.concatenate([np.ones_like(zset)*(x_offset-dx/2.), x_offset+np.array([-dx,dx])/2.,
+                                      np.ones_like(zset)*(x_offset+dx/2.), x_offset+np.array([-dx,dx])/2.]),
+                    y=np.concatenate([zset, np.ones(2)*zset.max(), zset[::-1], np.ones(2)*zset.min()]),
                     mode='lines',
-                    line=dict(color=border)
+                    line=dict(color=border),
+                    showlegend=False
                 ))
-                fig.add_trace(go.Scatter(
-                    x=X[1] * 2 + x_offset,
-                    y=Z[1],
-                    mode='lines',
-                    name=self.name,
-                    line=dict(color=border)
-                ))
+
 
         elif np.all(self.depth_bot == self.depth_top):
 
@@ -199,42 +196,6 @@ class Log(abcLog):
             fig.update_yaxes(range=[tmpz.max(), tmpz.min()])
 
         return fig
-
-    def plot_cyklo(self, ax=None, elevation=0., xy=(0, 0), unit_rad=1., dr=0.2, m_per_turn=100.):
-        dr *= unit_rad
-        if ax is None:
-            fig, ax = plt.subplots()
-
-        # The inner ring starts at "9 o'clock" and goes clockwise upwards from elevation 0.
-        # On the outside, a new ring is placed from "9 o'clock" every 100 meters downwards clockwise.
-        elev_top = elevation-self.depth_top
-        elev_bot = elevation-self.depth_bot
-
-        angle_top = np.pi - 2*np.pi*elev_top/m_per_turn
-        angle_bot = np.pi - 2*np.pi*elev_bot/m_per_turn
-
-        for i, (phi_t, phi_b, geo) in enumerate(zip(angle_top, angle_bot, self.values)):
-
-            arc = np.linspace(phi_t, phi_b, int(
-                1000.*np.abs(phi_b-phi_t)/(2.*np.pi)))
-            r_mid = unit_rad - 1.25*dr*(arc-np.pi)/(2.*np.pi)
-
-            x1 = (r_mid-dr/2.)*np.cos(arc)
-            y1 = (r_mid-dr/2.)*np.sin(arc)
-
-            x2 = (r_mid+dr/2.)*np.cos(arc)
-            y2 = (r_mid+dr/2.)*np.sin(arc)
-
-            x = np.concatenate((x1, x2[::-1]))
-            y = np.concatenate((y1, y2[::-1]))
-            x = np.append(x, x[0])
-            y = np.append(y, y[0])
-            poly = Polygon(
-                np.stack((x+xy[0], y+xy[1])).T, facecolor=self.color[geo])
-            ax.add_patch(poly)
-        ax.plot([-1*unit_rad+xy[0]], [0*unit_rad+xy[1]], 'w_')
-        ax.plot(xy[0], xy[1], 'w.')
-        return ax
 
     def sample(self, z):
         i_top = np.clip(np.searchsorted(
@@ -755,6 +716,7 @@ class ProjectionLine:
         self.phi = -np.arctan2(dy,dx)
         self.R = np.array([[np.cos(self.phi), -np.sin(self.phi)],
                            [np.sin(self.phi), np.cos(self.phi)]])
+
         self.iR = np.array([[np.cos(-self.phi), -np.sin(-self.phi)],
                             [np.sin(-self.phi), np.cos(-self.phi)]])
 
